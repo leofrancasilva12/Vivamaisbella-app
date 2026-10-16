@@ -78,7 +78,10 @@ const moeda = n => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDi
 const urlFoto = f => (f && st.fotos[f]) || '';
 const av = (nome, foto, cls, estilo) => { const u = urlFoto(foto); return `<div class="av ${cls || ''}"${estilo ? ` style="${estilo}"` : ''}>${u ? `<img src="${esc(u)}" alt="">` : esc(ini(nome))}</div>`; };
 const procPorNome = n => st.procs.find(p => p.nome.toLowerCase() === String(n || '').trim().toLowerCase());
-const valorSug = (nome, qtd) => { const p = procPorNome(nome); return p && p.valor ? Number(p.valor * qtd).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''; };
+const valorSug = (nome, qtd) => { const p = procPorNome(nome); if (!p || !p.valor) return ''; const t = Number(qtd) === 10 && p.valor_plano10 ? p.valor_plano10 : p.valor * qtd; return Number(t).toLocaleString('pt-BR', { minimumFractionDigits: 2 }); };
+// Sessões que a cliente escolheu na ficha: "3 sessões de Limpeza de pele · R$ 300,00"
+const itemPacote = x => `${x.plano ? 'Plano de 10 sessões' : x.sessoes + (x.sessoes === 1 ? ' sessão' : ' sessões')} de ${x.servico}${x.total != null ? ' · ' + moeda(x.total) : ''}`;
+const blocoPacote = (f, estilo) => f && Array.isArray(f.pacote) && f.pacote.length ? `<div class="pacote-esc"${estilo ? ` style="${estilo}"` : ''}>${I('tag', 1.8)}<div><small>ESCOLHEU NA FICHA</small>${f.pacote.map(x => `<span>${esc(itemPacote(x))}</span>`).join('')}${f.pacote.length > 1 ? `<b>Total ${moeda(f.pacote.reduce((t, x) => t + Number(x.total || 0), 0))}</b>` : ''}</div></div>` : '';
 function sugerirValor(form) {
   if (!form || form.dataset.valorManual === '1' || !form.elements.valor || !form.elements.qtd) return;
   form.elements.valor.value = valorSug(form.elements.procedimento.value, parseInt(form.elements.qtd.value, 10) || 1);
@@ -143,6 +146,7 @@ function cartaoPedido(ped) {
   return `<div class="card stack pedido-card">
     <div class="row">${av(p.nome, p.foto)}<div style="flex:1;min-width:0"><b style="font-weight:500">${esc(p.nome)}</b><div class="ink2" style="font-size:13px">${esc(pl ? pl.procedimento : ped.procedimento || 'Primeira sessão')}${s ? ` · ${s.numero}ª sessão` : pl ? '' : ' · 1ª sessão'}</div></div><span class="badge b-warn">${pl ? 'PEDIDO' : 'NOVA'}</span></div>
     <div class="pedido-quando">${I('cal')}<div><b>${dataLonga(ped.data_hora)}</b><span>às ${fHora(ped.data_hora)}</span></div></div>
+    ${!pl && ped.anamnese_id ? blocoPacote(st.fichas.find(x => x.id === ped.anamnese_id)) : ''}
     ${choque ? `<div class="alerta" style="padding:8px 12px;font-size:13px">Já tem sessão de ${esc(primeiro(paciente(choque.x.paciente_id).nome))} às ${fHora(choque.z.data_hora)} nesse dia.</div>` : ''}
     <div class="row" style="gap:8px"><button class="btn sm" style="flex:1" data-acao="pedido-confirmar" data-id="${ped.id}">${I('check', 2)} Confirmar</button><button class="btn sm ghost" style="flex:1" data-acao="pedido-mudar" data-id="${ped.id}">Mudar data</button></div></div>`;
 }
@@ -252,9 +256,9 @@ async function carregar() {
   const [p, pl, f, pr, pd, de, fe] = await Promise.all([
     sb.from('pacientes').select('id,nome,telefone,idade,data_nascimento,endereco,foto,criado_em').order('nome'),
     sb.from('planos').select('id,paciente_id,procedimento,total_sessoes,valor,status,codigo_publico,criado_em,sessoes(id,numero,data_hora,status,observacao,concluida_em)').order('criado_em', { ascending: false }),
-    sb.from('anamneses').select('id,paciente_id,servicos,pontos_atencao,enviada_em').order('enviada_em', { ascending: false }),
-    sb.from('procedimentos').select('id,nome,valor,duracao_min').order('nome'),
-    sb.from('pedidos_horario').select('id,plano_id,paciente_id,procedimento,data_hora,criado_em').eq('status', 'pendente').order('data_hora'),
+    sb.from('anamneses').select('id,paciente_id,servicos,pontos_atencao,enviada_em,pacote').order('enviada_em', { ascending: false }),
+    sb.from('procedimentos').select('id,nome,valor,duracao_min,valor_plano10').order('nome'),
+    sb.from('pedidos_horario').select('id,plano_id,paciente_id,procedimento,data_hora,criado_em,anamnese_id').eq('status', 'pendente').order('data_hora'),
     sb.from('dias_especiais').select('dia,horas').gte('dia', diaKey(new Date())),
     sb.from('feriados').select('dia,nome').gte('dia', diaKey(new Date())).order('dia'),
   ]);
@@ -428,6 +432,7 @@ function vInicio() {
         <a class="row" href="#/paciente/${p.id}" style="text-decoration:none;color:inherit">${av(p.nome, p.foto)}
           <div style="flex:1;min-width:0"><b style="font-weight:500">${esc(p.nome)}</b><div class="ink2" style="font-size:13px">${esc((f.servicos || []).join(', '))} · ficha de ${fCurta(f.enviada_em)}</div></div>
           ${n ? `<span class="badge b-warn">${n} ATENÇÃO</span>` : ''}</a>
+        ${blocoPacote(f)}
         <a class="btn sm" href="#/novo-plano/${p.id}" style="width:100%">Montar plano</a></div>`; }).join('')}</section>` : ''}
     <section class="stack"><h2 class="s">Hora de renovar</h2>
       ${renovar.length ? renovar.map(pl => { const p = paciente(pl.paciente_id); const i = info(pl);
@@ -477,6 +482,7 @@ function vPaciente(id) {
     <a class="btn soft" href="${waLink(p.telefone)}" target="_blank" rel="noopener">${I('wa')} Conversar no WhatsApp</a>
     <section class="card stack"><div class="tag">Ficha de anamnese</div>
       ${f ? `<div class="ink2" style="font-size:14px">${esc((f.servicos || []).join(', '))} · ${fData(f.enviada_em)}</div>
+        ${blocoPacote(f)}
         ${(f.pontos_atencao || []).length ? `<div class="alerta"><b>ATENÇÃO</b>${f.pontos_atencao.map(x => `<span>${esc(x.pergunta)}: <strong>${esc(x.resposta)}</strong></span>`).join('')}</div>` : '<div class="b-ok badge" style="align-self:flex-start">Nenhum ponto de atenção</div>'}
         <div id="ficha-${f.id}"></div><div class="row" style="gap:8px"><button class="btn ghost sm" data-acao="ver-ficha" data-id="${f.id}" style="flex:1">${I('file')} Ver ficha completa</button><button class="icon-btn lixo" data-acao="excluir-ficha" data-id="${f.id}" aria-label="Excluir esta ficha de anamnese">${I('trash')}</button></div>
         ${antigas.length ? `<div class="tag" style="margin-top:6px">Fichas anteriores</div>${antigas.map(x => `<div class="stack" style="gap:6px"><div class="between" style="align-items:center"><span class="ink2" style="font-size:14px;flex:1;min-width:0">${fData(x.enviada_em)} · ${esc((x.servicos || []).join(', '))}</span><button class="btn ghost sm" data-acao="ver-ficha" data-id="${x.id}">Ver</button><button class="icon-btn lixo" data-acao="excluir-ficha" data-id="${x.id}" aria-label="Excluir a ficha de ${fData(x.enviada_em)}">${I('trash')}</button></div><div id="ficha-${x.id}"></div></div>`).join('')}` : ''}`
@@ -525,7 +531,10 @@ function vNovoPlano(pacId) {
   const p = pacId && paciente(pacId), f = p && fichaDe(p.id);
   const pf = st.prefill && p && st.prefill.pedido.paciente_id === p.id ? st.prefill : null;
   const pedProc = pf && pf.pedido.procedimento ? nomesProc().find(x => x.toLowerCase() === pf.pedido.procedimento.toLowerCase()) || pf.pedido.procedimento : null;
-  const nomes = nomesProc(), sug = pedProc || (f && (f.servicos || [])[0] ? nomes.find(x => x.toLowerCase() === f.servicos[0].toLowerCase()) : null), proc0 = sug || nomes[0] || '';
+  const pc = f && Array.isArray(f.pacote) && f.pacote.length && !planosDe(p.id).length ? f.pacote[0] : null;
+  const pcProc = pc ? nomesProc().find(x => x.toLowerCase() === String(pc.servico).toLowerCase()) || pc.servico : null;
+  const nomes = nomesProc(), sug = pedProc || pcProc || (f && (f.servicos || [])[0] ? nomes.find(x => x.toLowerCase() === f.servicos[0].toLowerCase()) : null), proc0 = sug || nomes[0] || '';
+  const qtd0 = pc && (!pedProc || pedProc.toLowerCase() === String(pc.servico).toLowerCase()) ? pc.sessoes : 5;
   const ops = st.pacientes.map(x => `<option value="${x.id}" ${p && x.id === p.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('');
   return `<div class="wrap" style="padding-bottom:40px">
     <header class="row" style="justify-content:space-between"><button class="icon-btn plain" data-acao="voltar" aria-label="Cancelar">${I('x')}</button><span style="font-weight:500">Novo plano</span><span style="width:44px"></span></header>
@@ -535,15 +544,16 @@ function vNovoPlano(pacId) {
       <button type="button" class="btn ghost sm" data-acao="nova-paciente" data-origem="plano" style="align-self:flex-start">${I('plus')} Cadastrar nova paciente</button>
       ${pf ? `<div class="pedido-quando" style="background:var(--warnbg)">${I('cal')}<div><b>${esc(primeiro(p.nome))} pediu ${esc(dataLonga(pf.pedido.data_hora))}</b><span>às ${fHora(pf.pedido.data_hora)}. Monte o plano para confirmar, ou mude a data da 1ª sessão abaixo.</span></div></div>` : ''}
       ${f ? `<div class="alerta" style="background:var(--okbg);color:var(--oktext)">Ficha de anamnese de ${fData(f.enviada_em)}: ${esc((f.servicos || []).join(', '))}</div>` : ''}
+      ${pc ? blocoPacote(f) + (f.pacote.length > 1 ? '<p class="muted" style="font-size:12px;margin-top:-10px">Ela escolheu mais de um serviço: crie um plano para cada.</p>' : '') : ''}
       <div class="stack" style="gap:8px"><span class="tag">Procedimento</span>
         ${chipsProc(proc0)}
         <input class="inp" name="procedimento" value="${esc(proc0)}" aria-label="Procedimento" placeholder="Nome do procedimento" required></div>
       <div class="card row" style="justify-content:space-between"><div><b style="font-weight:500">Número de sessões</b><div class="ink2" style="font-size:12px">Pacote fechado com a paciente</div></div>
         <div class="row" style="gap:4px"><button type="button" class="icon-btn" data-acao="qtd" data-v="-1" aria-label="Menos uma sessão">−</button>
-        <input name="qtd" type="number" min="1" max="50" value="5" class="serif" style="width:48px;text-align:center;font-size:30px;font-weight:700;border:0;background:transparent" aria-label="Número de sessões">
+        <input name="qtd" type="number" min="1" max="50" value="${qtd0}" class="serif" style="width:48px;text-align:center;font-size:30px;font-weight:700;border:0;background:transparent" aria-label="Número de sessões">
         <button type="button" class="icon-btn acc" style="background:var(--ink)" data-acao="qtd" data-v="1" aria-label="Mais uma sessão">+</button></div></div>
       <div class="f">1ª sessão${pf ? '' : ' (opcional)'}${pf ? campoDH(diaKey(new Date(pf.pedido.data_hora)), fHora(pf.pedido.data_hora), false) : campoDH('', '09:00', true, 'Escolher data e horário')}</div>
-      <label class="f">Valor do pacote (opcional)<input class="inp" name="valor" inputmode="decimal" placeholder="R$ 0,00" value="${valorSug(proc0, 5)}"><span class="muted" style="font-size:12px;font-weight:400;letter-spacing:0">Calculado pelo valor da sessão vezes o número de sessões. Pode alterar.</span></label>
+      <label class="f">Valor do pacote (opcional)<input class="inp" name="valor" inputmode="decimal" placeholder="R$ 0,00" value="${valorSug(proc0, qtd0)}"><span class="muted" style="font-size:12px;font-weight:400;letter-spacing:0">Calculado pelo valor da sessão vezes o número de sessões. Pode alterar.</span></label>
       <p class="ink2" style="font-size:13px;text-align:center">As demais datas você agenda ao concluir cada sessão.</p>
       <button class="btn" type="submit">Criar plano</button>
     </form></div>`;
@@ -880,6 +890,7 @@ function sheetProc(id, nome) {
       <label class="f">Nome<input class="inp" name="nome" value="${esc(p ? p.nome : nome || '')}" required maxlength="80" autocomplete="off"></label>
       <div class="f">Duração da sessão<div class="chips">${[30, 45, 60, 90, 120].map(m => `<label class="chip-op"><input type="radio" name="duracao" value="${m}" ${(p ? p.duracao_min || 60 : 60) === m ? 'checked' : ''}><span>${fDur(m)}</span></label>`).join('')}</div></div>
       <label class="f">Valor por sessão<input class="inp" name="valor" inputmode="decimal" placeholder="R$ 0,00" value="${p && p.valor != null ? Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''}"></label>
+      <label class="f">Valor do plano de 10 sessões (opcional)<input class="inp" name="valor10" inputmode="decimal" placeholder="Em branco: 10 × o valor da sessão" value="${p && p.valor_plano10 != null ? Number(p.valor_plano10).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ''}"><span class="muted" style="font-size:12px;font-weight:400;letter-spacing:0">Preço com desconto que a cliente vê na ficha de anamnese.</span></label>
       ${p ? '<p class="muted" style="font-size:12px">Mudar o nome ou o valor aqui não altera os planos já criados.</p>' : ''}
       <button class="btn" type="submit">${p ? 'Salvar' : 'Cadastrar'}</button>
       ${p ? `<button class="btn ghost" type="button" data-acao="excluir-proc" data-id="${p.id}" style="color:var(--warntext)">${I('trash')} Excluir procedimento</button>` : ''}</form>`);
@@ -1284,11 +1295,11 @@ async function enviarForm(tipo, form) {
     return;
   }
   if (tipo === 'proc') {
-    const nome = v('nome').replace(/\s+/g, ' '), valor = lerValor(v('valor')), id = form.dataset.id;
+    const nome = v('nome').replace(/\s+/g, ' '), valor = lerValor(v('valor')), valor_plano10 = lerValor(v('valor10')), id = form.dataset.id;
     const sel = form.querySelector('input[name="duracao"]:checked'), duracao_min = sel ? Number(sel.value) : 60;
     if (nome.length < 2) return toast('Escreva o nome do procedimento.');
     if (await salvar(async () => {
-      const r = id ? await sb.from('procedimentos').update({ nome, valor, duracao_min, atualizado_em: new Date().toISOString() }).eq('id', id) : await sb.from('procedimentos').insert({ nome, valor, duracao_min });
+      const r = id ? await sb.from('procedimentos').update({ nome, valor, duracao_min, valor_plano10, atualizado_em: new Date().toISOString() }).eq('id', id) : await sb.from('procedimentos').insert({ nome, valor, duracao_min, valor_plano10 });
       if (r.error) { if (r.error.code === '23505') { toast('Já existe um procedimento com esse nome.'); throw Object.assign(r.error, { avisado: true }); } throw r.error; }
     }, id ? 'Procedimento atualizado.' : 'Procedimento cadastrado.')) { fecharSheet(); render(); }
     return;
@@ -1390,6 +1401,11 @@ async function enviarForm(tipo, form) {
 .aniv-falta svg.i{width:18px;height:18px;color:var(--accent);flex-shrink:0}
 .selo-aniv{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;font-weight:600;border-radius:10px;padding:4px 9px;background:#F3DDD3;color:#9A3F1E}
 .selo-aniv svg.i{width:14px;height:14px}
+.pacote-esc{display:flex;gap:10px;align-items:flex-start;background:#F6EDE3;border:1px solid #EAD9C6;border-radius:14px;padding:10px 12px;font-size:14px;color:var(--ink)}
+.pacote-esc svg.i{width:18px;height:18px;color:var(--accent);flex-shrink:0;margin-top:2px}
+.pacote-esc div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pacote-esc small{font-size:10.5px;font-weight:600;letter-spacing:.16em;color:var(--muted)}
+.pacote-esc b{font-weight:600;margin-top:2px}
 `;
   document.head.appendChild(c);
 })();
