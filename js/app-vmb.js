@@ -53,6 +53,7 @@ const ic = {
   olho: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
   olhoX: '<path d="M10.6 5.6c.5-.1.9-.1 1.4-.1 6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.6 3.4M6.6 6.6A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5c1.9 0 3.5-.6 4.9-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3.5 3.5l17 17"/>',
   baixar: '<path d="M12 4v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 19.5h15"/>',
+  bolo: '<path d="M4 20.5h16"/><path d="M5 20.5v-6.5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6.5"/><path d="M5 16c1.2 1 2.3 1 3.5 0s2.3-1 3.5 0 2.3 1 3.5 0 2.3-1 3.5 0"/><path d="M12 12V8.5"/><path d="M12 6.2c-.9-.7-.9-1.9 0-3 .9 1.1.9 2.3 0 3z"/>',
 };
 const I = (n, sw) => `<svg class="i" viewBox="0 0 24 24"${sw ? ` style="stroke-width:${sw}"` : ''}>${ic[n]}</svg>`;
 
@@ -60,6 +61,17 @@ const fDur = m => { m = Number(m) || 60; const h = Math.floor(m / 60), r = m % 6
 const durNome = n => { const p = procPorNome(n); return p && p.duracao_min ? p.duracao_min : 60; };
 const idadeDe = p => { if (!p) return null; if (p.data_nascimento) { const n = new Date(p.data_nascimento + 'T12:00'), h = new Date(); let i = h.getFullYear() - n.getFullYear(); if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) i--; return i; } return p.idade || null; };
 const nascBR = iso => iso ? iso.split('-').reverse().join('/') : '';
+// Próximo aniversário: { dias, data, idade } (dias = 0 é hoje). 29/02 vira 28/02 em ano comum.
+const aniversarioDe = p => {
+  if (!p || !p.data_nascimento) return null;
+  const [a, m, d] = p.data_nascimento.split('-').map(Number), h = new Date(); h.setHours(0, 0, 0, 0);
+  const em = ano => { const bis = (ano % 4 === 0 && ano % 100 !== 0) || ano % 400 === 0; return new Date(ano, m - 1, m === 2 && d === 29 && !bis ? 28 : d); };
+  let prox = em(h.getFullYear()); if (prox < h) prox = em(h.getFullYear() + 1);
+  return { dias: Math.round((prox - h) / 864e5), data: prox, idade: prox.getFullYear() - a };
+};
+const ANIV_DIAS = 3;
+const quandoAniv = x => x.dias === 0 ? 'Hoje' : x.dias === 1 ? 'Amanhã' : x.data.toLocaleDateString('pt-BR', { weekday: 'long' }).replace(/^./, c => c.toUpperCase()) + ', ' + fCurta(x.data.toISOString());
+const msgParabens = p => `Feliz aniversário, ${primeiro(p.nome)}! Que seu novo ano seja de muita saúde, beleza e bem-estar. Um abraço carinhoso, ${TERAPEUTA}, Viva Mais Bella.`;
 const lerNasc = t => { const m = String(t || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) return null; const d = new Date(+m[3], +m[2] - 1, +m[1]); if (d.getDate() !== +m[1] || d.getMonth() !== +m[2] - 1 || d > new Date() || +m[3] < 1900) return null; return `${m[3]}-${m[2]}-${m[1]}`; };
 const mascaraNasc = el => { const d = el.value.replace(/\D/g, '').slice(0, 8); el.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d; };
 const moeda = n => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -360,6 +372,27 @@ function itemSessao(pl, s, extra) {
     ${s.status === 'concluida' ? '<span class="badge b-ok">FEITA</span>' : s.data_hora && diaKey(new Date(s.data_hora)) > diaKey(new Date()) ? '<span class="badge" style="background:var(--soft);color:var(--ink2)">AGENDADA</span>' : '<span class="badge b-warn">CONCLUIR</span>'}</a>`;
 }
 
+/* ═══ ANIVERSÁRIOS (Início) ═══ */
+function cartaoAniversarios(lista, semNasc) {
+  const hoje = lista.filter(o => o.x.dias === 0).length;
+  return `<section class="stack aniv">
+    <div class="between"><h2 class="s">Aniversários</h2>${hoje ? `<span class="badge aniv-badge">${hoje === 1 ? 'HOJE' : hoje + ' HOJE'}</span>` : `<span class="muted" style="font-size:13px">próximos ${ANIV_DIAS} dias</span>`}</div>
+    ${lista.map(({ p, x }) => `<div class="card stack aniv-card${x.dias === 0 ? ' hoje' : ''}">
+      <a class="row" href="#/paciente/${p.id}" style="text-decoration:none;color:inherit">
+        <span class="aniv-av">${av(p.nome, p.foto, '', x.dias === 0 ? 'background:var(--card)' : '')}<span class="aniv-bolo">${I('bolo', 1.8)}</span></span>
+        <div style="flex:1;min-width:0"><b style="font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</b>
+          <div class="ink2" style="font-size:13px"><span class="aniv-quando">${esc(quandoAniv(x))}</span> · faz ${x.idade} anos</div></div>
+        ${x.dias ? `<span class="aniv-dias"><b>${x.dias}</b>${x.dias === 1 ? 'dia' : 'dias'}</span>` : ''}</a>
+      <a class="btn sm${x.dias ? ' ghost' : ''}" href="${waLink(p.telefone, msgParabens(p))}" target="_blank" rel="noopener" style="width:100%">${I('wa')} ${x.dias ? 'Preparar parabéns' : 'Mandar parabéns'}</a>
+    </div>`).join('')}
+    ${semNasc ? `<button class="aniv-falta" data-acao="sem-nasc">${I('alert', 1.8)} ${semNasc} ${semNasc === 1 ? 'paciente está' : 'pacientes estão'} sem data de nascimento</button>` : ''}
+  </section>`;
+}
+function sheetSemNasc() {
+  const l = st.pacientes.filter(p => !p.data_nascimento).sort((a, b) => a.nome.localeCompare(b.nome));
+  abrirSheet(`<div class="between" style="align-items:flex-start"><div><h2 class="s" style="font-size:25px">Sem data de nascimento</h2><div class="ink2" style="font-size:13px">Complete para elas entrarem nos lembretes de aniversário.</div></div><button class="icon-btn plain" data-acao="fechar" aria-label="Fechar">${I('x')}</button></div>
+    <div class="stack" style="gap:8px">${l.map(p => `<a class="item" href="#/paciente/${p.id}" data-acao="fechar" style="min-height:58px">${av(p.nome, p.foto)}<div class="txt"><b>${esc(p.nome)}</b><span>${idadeDe(p) ? idadeDe(p) + ' anos · ' : ''}toque para abrir e editar</span></div>${I('edit')}</a>`).join('')}</div>`);
+}
 function vInicio() {
   const agora = new Date(), hoje = diaKey(agora), fimSemana = somaDias(agora, 7);
   const todas = st.planos.filter(p => p.status === 'ativo').flatMap(pl => pl.sessoes.map(s => ({ pl, s })));
@@ -367,6 +400,8 @@ function vInicio() {
   const semana = todas.filter(x => x.s.data_hora && x.s.status === 'agendada' && new Date(x.s.data_hora) >= agora && new Date(x.s.data_hora) <= fimSemana).length;
   const renovar = st.planos.filter(p => p.status === 'ativo' && info(p).falta <= 1);
   const semPlano = st.pacientes.filter(p => !planosDe(p.id).length && fichaDe(p.id));
+  const aniv = st.pacientes.map(p => ({ p, x: aniversarioDe(p) })).filter(o => o.x && o.x.dias <= ANIV_DIAS).sort((a, b) => a.x.dias - b.x.dias || a.p.nome.localeCompare(b.p.nome));
+  const semNasc = st.pacientes.filter(p => !p.data_nascimento).length;
   const h = agora.getHours(), saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   const dataTxt = agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   return `<div class="wrap">
@@ -383,6 +418,7 @@ function vInicio() {
     </div>
     ${st.pedidos.length ? `<section class="stack"><div class="between"><h2 class="s">Pedidos de horário</h2><span class="badge b-warn">${st.pedidos.length} ${st.pedidos.length === 1 ? 'NOVO' : 'NOVOS'}</span></div>${st.pedidos.map(cartaoPedido).join('')}</section>` : ''}
     ${st.avisos === 'inativo' && !st.ui.semConvite ? `<div class="card row" style="background:var(--soft);align-items:flex-start">${I('bell')}<div style="flex:1;display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;line-height:1.5">Ative os avisos para saber na hora quando uma cliente pedir horário.</span><div class="row" style="gap:8px"><button class="btn sm" data-acao="avisos-ativar">Ativar avisos</button><button class="btn sm ghost" style="border:0" data-acao="avisos-depois">Agora não</button></div></div></div>` : ''}
+    ${aniv.length ? cartaoAniversarios(aniv, semNasc) : ''}
     <section class="stack">
       <div class="between"><h2 class="s">Sessões de hoje</h2><a href="#/agenda" style="font-size:13px;text-decoration:none;padding:8px 0">Ver agenda</a></div>
       ${deHoje.length ? deHoje.map(x => itemSessao(x.pl, x.s)).join('') : '<div class="empty">Nenhuma sessão marcada para hoje.</div>'}
@@ -436,7 +472,8 @@ function vPaciente(id) {
     <header class="row" style="justify-content:space-between"><a class="icon-btn plain" href="#/pacientes" aria-label="Voltar">${I('back')}</a><span style="font-weight:500">Paciente</span><button class="icon-btn plain" data-acao="editar-paciente" data-id="${id}" aria-label="Editar dados da paciente">${I('edit')}</button></header>
     <div class="row"><button class="av-btn" data-acao="foto" data-tipo="paciente" data-id="${p.id}" aria-label="Foto da paciente">${av(p.nome, p.foto, 'g')}<span class="cam">${I('cam')}</span></button><div style="min-width:0"><h1 class="t" style="font-size:28px">${esc(p.nome)}</h1>
       <div class="ink2" style="font-size:14px">${esc(fTel(p.telefone))}${idadeDe(p) ? ' · ' + idadeDe(p) + ' anos' : ''}${p.data_nascimento ? ' · nasc. ' + nascBR(p.data_nascimento) : ''}</div>
-      ${p.endereco ? `<div class="muted" style="font-size:13px">${esc(p.endereco)}</div>` : ''}</div></div>
+      ${p.endereco ? `<div class="muted" style="font-size:13px">${esc(p.endereco)}</div>` : ''}
+      ${(x => x && x.dias <= ANIV_DIAS ? `<span class="selo-aniv">${I('bolo', 1.8)} ${x.dias === 0 ? 'Aniversário hoje' : x.dias === 1 ? 'Aniversário amanhã' : 'Aniversário em ' + x.dias + ' dias'} · ${x.idade} anos</span>` : '')(aniversarioDe(p))}</div></div>
     <a class="btn soft" href="${waLink(p.telefone)}" target="_blank" rel="noopener">${I('wa')} Conversar no WhatsApp</a>
     <section class="card stack"><div class="tag">Ficha de anamnese</div>
       ${f ? `<div class="ink2" style="font-size:14px">${esc((f.servicos || []).join(', '))} · ${fData(f.enviada_em)}</div>
@@ -1060,6 +1097,7 @@ document.addEventListener('click', async e => {
     catch { confirmar({ titulo: 'Link da paciente', texto: `Segure o link abaixo para copiar:<input class="inp" readonly value="${esc(linkPaciente(pl))}" onfocus="this.select()" style="margin-top:10px;font-size:14px">`, ok: 'Pronto', cancelar: 'Fechar', icone: 'copy' }); }
     return;
   }
+  if (a === 'sem-nasc') { sheetSemNasc(); return; }
   if (a === 'excluir-ficha') {
     const f = st.fichas.find(x => x.id === id); if (!f) return;
     const p = paciente(f.paciente_id), serv = (f.servicos || []).join(', ');
@@ -1337,6 +1375,21 @@ async function enviarForm(tipo, form) {
 .dlg-extra{width:100%;min-height:44px;font-size:14px;margin-top:2px}
 .dlg-extra svg.i{width:18px;height:18px;color:var(--accent)}
 .toast{z-index:70}
+.aniv-badge{background:#F3DDD3;color:#9A3F1E}
+.aniv-card{gap:12px}
+.aniv-card.hoje{background:linear-gradient(135deg,#F6E4DA,#F1E2CF);box-shadow:inset 0 0 0 1.5px #E8CFC4}
+.aniv-av{position:relative;flex-shrink:0}
+.aniv-bolo{position:absolute;right:-4px;bottom:-4px;width:22px;height:22px;border-radius:11px;background:#B5562F;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)}
+.aniv-card.hoje .aniv-bolo{border-color:#F4E3D6}
+.aniv-bolo svg.i{width:13px;height:13px}
+.aniv-quando{font-weight:600;color:var(--ink)}
+.aniv-card.hoje .aniv-quando{color:#9A3F1E}
+.aniv-dias{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:48px;height:48px;border-radius:14px;background:var(--bg);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);line-height:1.1}
+.aniv-dias b{font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--ink);letter-spacing:0;font-weight:600}
+.aniv-falta{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:1.5px dashed var(--chip);border-radius:14px;background:transparent;color:var(--ink2);font-size:13px;padding:8px 12px;cursor:pointer;text-align:left}
+.aniv-falta svg.i{width:18px;height:18px;color:var(--accent);flex-shrink:0}
+.selo-aniv{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;font-weight:600;border-radius:10px;padding:4px 9px;background:#F3DDD3;color:#9A3F1E}
+.selo-aniv svg.i{width:14px;height:14px}
 `;
   document.head.appendChild(c);
 })();
