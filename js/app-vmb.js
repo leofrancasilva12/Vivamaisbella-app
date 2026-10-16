@@ -666,7 +666,7 @@ let perguntasProntas = null;
 const temPerguntas = () => typeof SERVICOS !== 'undefined' && typeof FICHA_GERAL !== 'undefined';
 function carregarPerguntas() {
   if (!perguntasProntas) perguntasProntas = new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = 'js/servicos.js?v=' + Date.now();
+    const s = document.createElement('script'); s.src = 'https://anamnese.vivamaisbella.online/js/servicos.js?v=' + Date.now();
     s.onload = res; s.onerror = () => { perguntasProntas = null; rej(new Error('perguntas')); };
     document.head.appendChild(s);
   });

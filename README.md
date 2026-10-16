@@ -1,6 +1,6 @@
 # Viva Mais Bella — aplicativo
 
-App (PWA) de acompanhamento de tratamentos da Viva Mais Bella, publicado em https://app-vivamaisbella.vercel.app
+App (PWA) de acompanhamento de tratamentos da Viva Mais Bella, publicado em https://aplicativo.vivamaisbella.online (GitHub Pages)
 
 | Arquivo | O que é |
 |---|---|
@@ -12,7 +12,7 @@ App (PWA) de acompanhamento de tratamentos da Viva Mais Bella, publicado em http
 | `abertura.mp4`, `img/` | Vídeo e imagens da abertura |
 | `vercel.json` | Configuração da Vercel |
 
-As perguntas da anamnese (`js/servicos.js`) vêm do repositório da ficha
+As perguntas da anamnese (`js/servicos.js`) vêm direto do site da ficha (anamnese.vivamaisbella.online)
 (Anameneseavivamaisbella): mudou uma pergunta lá, o app acompanha.
 
 Banco de dados: Supabase (o mesmo da ficha).
