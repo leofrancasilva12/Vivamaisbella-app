@@ -50,6 +50,9 @@ const ic = {
   clock: '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.5V12l3 2"/>',
   cam: '<path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   img: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/>',
+  olho: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  olhoX: '<path d="M10.6 5.6c.5-.1.9-.1 1.4-.1 6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.6 3.4M6.6 6.6A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5c1.9 0 3.5-.6 4.9-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3.5 3.5l17 17"/>',
+  baixar: '<path d="M12 4v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 19.5h15"/>',
 };
 const I = (n, sw) => `<svg class="i" viewBox="0 0 24 24"${sw ? ` style="stroke-width:${sw}"` : ''}>${ic[n]}</svg>`;
 
@@ -196,7 +199,7 @@ function blocoAvisos() {
 }
 
 /* ═══ JANELA DE CONFIRMAÇÃO (no lugar das caixas do sistema) ═══ */
-function confirmar({ titulo, texto, ok = 'Confirmar', cancelar = 'Voltar', perigo = false, icone, trava } = {}) {
+function confirmar({ titulo, texto, ok = 'Confirmar', cancelar = 'Voltar', perigo = false, icone, trava, extra } = {}) {
   return new Promise(resolve => {
     const ant = $('#dialogo'); if (ant) ant.remove();
     const el = document.createElement('div'); el.id = 'dialogo';
@@ -205,6 +208,7 @@ function confirmar({ titulo, texto, ok = 'Confirmar', cancelar = 'Voltar', perig
       <span class="dlg-ic ${perigo ? 'perigo' : ''}">${I(ic, 1.9)}</span>
       <h2 class="s" id="dlg-t">${esc(titulo || 'Confirmar')}</h2>
       ${texto ? `<p class="ink2" id="dlg-x">${texto}</p>` : ''}
+      ${extra ? `<button type="button" class="btn soft sm dlg-extra" data-extra>${I(extra.icone || 'baixar')} ${esc(extra.rotulo)}</button>` : ''}
       ${trava ? `<label class="dlg-trava"><input type="checkbox" id="dlg-trava"><span>${esc(trava)}</span></label>` : ''}
       <div class="dlg-bts"><button type="button" class="btn ghost" data-r="0">${esc(cancelar)}</button><button type="button" class="btn ${perigo ? 'perigo' : ''}" data-r="1" ${trava ? 'disabled' : ''}>${esc(ok)}</button></div></div></div>`;
     document.body.appendChild(el);
@@ -214,6 +218,8 @@ function confirmar({ titulo, texto, ok = 'Confirmar', cancelar = 'Voltar', perig
     el.addEventListener('click', e => {
       e.stopPropagation();
       if (e.target.classList.contains('dlg-bg')) return fim(false);
+      const ex = e.target.closest('[data-extra]');
+      if (ex && extra && !ex.disabled) { ex.disabled = true; Promise.resolve(extra.acao()).finally(() => { ex.disabled = false; }); return; }
       const b = e.target.closest('[data-r]'); if (b && !b.disabled) fim(b.dataset.r === '1');
     });
     const tv = el.querySelector('#dlg-trava'); if (tv) tv.addEventListener('change', () => { el.querySelector('[data-r="1"]').disabled = !tv.checked; });
@@ -435,8 +441,8 @@ function vPaciente(id) {
     <section class="card stack"><div class="tag">Ficha de anamnese</div>
       ${f ? `<div class="ink2" style="font-size:14px">${esc((f.servicos || []).join(', '))} · ${fData(f.enviada_em)}</div>
         ${(f.pontos_atencao || []).length ? `<div class="alerta"><b>ATENÇÃO</b>${f.pontos_atencao.map(x => `<span>${esc(x.pergunta)}: <strong>${esc(x.resposta)}</strong></span>`).join('')}</div>` : '<div class="b-ok badge" style="align-self:flex-start">Nenhum ponto de atenção</div>'}
-        <div id="ficha-${f.id}"></div><button class="btn ghost sm" data-acao="ver-ficha" data-id="${f.id}" style="width:100%">${I('file')} Ver ficha completa</button>
-        ${antigas.length ? `<div class="tag" style="margin-top:6px">Fichas anteriores</div>${antigas.map(x => `<div class="stack" style="gap:6px"><div class="between"><span class="ink2" style="font-size:14px">${fData(x.enviada_em)} · ${esc((x.servicos || []).join(', '))}</span><button class="btn ghost sm" data-acao="ver-ficha" data-id="${x.id}">Ver</button></div><div id="ficha-${x.id}"></div></div>`).join('')}` : ''}`
+        <div id="ficha-${f.id}"></div><div class="row" style="gap:8px"><button class="btn ghost sm" data-acao="ver-ficha" data-id="${f.id}" style="flex:1">${I('file')} Ver ficha completa</button><button class="icon-btn lixo" data-acao="excluir-ficha" data-id="${f.id}" aria-label="Excluir esta ficha de anamnese">${I('trash')}</button></div>
+        ${antigas.length ? `<div class="tag" style="margin-top:6px">Fichas anteriores</div>${antigas.map(x => `<div class="stack" style="gap:6px"><div class="between" style="align-items:center"><span class="ink2" style="font-size:14px;flex:1;min-width:0">${fData(x.enviada_em)} · ${esc((x.servicos || []).join(', '))}</span><button class="btn ghost sm" data-acao="ver-ficha" data-id="${x.id}">Ver</button><button class="icon-btn lixo" data-acao="excluir-ficha" data-id="${x.id}" aria-label="Excluir a ficha de ${fData(x.enviada_em)}">${I('trash')}</button></div><div id="ficha-${x.id}"></div></div>`).join('')}` : ''}`
       : '<div class="empty">Ainda não tem ficha de anamnese.</div>'}
       <a class="btn sm" href="#/anamnese/${id}" style="width:100%">${I('file')} Fazer anamnese agora</a>
     </section>
@@ -1054,6 +1060,19 @@ document.addEventListener('click', async e => {
     catch { confirmar({ titulo: 'Link da paciente', texto: `Segure o link abaixo para copiar:<input class="inp" readonly value="${esc(linkPaciente(pl))}" onfocus="this.select()" style="margin-top:10px;font-size:14px">`, ok: 'Pronto', cancelar: 'Fechar', icone: 'copy' }); }
     return;
   }
+  if (a === 'excluir-ficha') {
+    const f = st.fichas.find(x => x.id === id); if (!f) return;
+    const p = paciente(f.paciente_id), serv = (f.servicos || []).join(', ');
+    const sim = await confirmar({
+      titulo: 'Excluir ficha?',
+      texto: `A ficha de anamnese de ${negrito(p ? p.nome : 'paciente')} enviada em ${negrito(fData(f.enviada_em))}${serv ? ` (${esc(serv)})` : ''} será apagada. A paciente, os planos e as sessões continuam.`,
+      ok: 'Excluir ficha', perigo: true, trava: 'Entendo que não dá para desfazer',
+      extra: { rotulo: 'Baixar PDF antes', icone: 'baixar', acao: () => baixarFichaPDF(id) },
+    });
+    if (!sim) return;
+    if (await salvar(async () => { const r = await sb.from('anamneses').delete().eq('id', id); if (r.error) throw r.error; }, 'Ficha excluída.')) render();
+    return;
+  }
   if (a === 'ver-ficha') {
     el.disabled = true;
     const { data, error } = await sb.from('anamneses').select('resumo,assinatura,enviada_em').eq('id', id).single();
@@ -1298,6 +1317,133 @@ async function enviarForm(tipo, form) {
       ${whats ? `<a class="btn" href="${waLink(pac.telefone, mensagemPlano(novo))}" target="_blank" rel="noopener" data-acao="fechar">${I('wa')} Enviar atualização no WhatsApp</a>` : ''}
       <button class="btn ghost" data-acao="fechar">Fechar</button>`);
   }
+}
+
+/* ═══ OLHO DA SENHA ═══
+   Todo campo de senha ganha um olho: toca e mostra, toca de novo e esconde.
+   Ao enviar o formulário, a senha volta a ficar escondida. */
+(function estilosExtras() {
+  if (document.getElementById('css-extras')) return;
+  const c = document.createElement('style'); c.id = 'css-extras';
+  c.textContent = `
+.senha-cx{position:relative;display:block}
+.senha-cx .inp{padding-right:52px}
+.senha-olho{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;background:transparent;border-radius:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,background .15s}
+.senha-olho:hover,.senha-olho:focus-visible{color:var(--ink);background:var(--bg);outline:none}
+.senha-olho.on{color:var(--accent)}
+.senha-olho svg.i{width:21px;height:21px}
+.icon-btn.lixo{width:42px;height:42px;border-color:#E8CFC4;color:#9A3F1E;margin-left:auto}
+.icon-btn.lixo svg.i{width:19px;height:19px}
+.dlg-extra{width:100%;min-height:44px;font-size:14px;margin-top:2px}
+.dlg-extra svg.i{width:18px;height:18px;color:var(--accent)}
+.toast{z-index:70}
+`;
+  document.head.appendChild(c);
+})();
+function olhoSenha(raiz) {
+  (raiz || document).querySelectorAll('input[type="password"]:not([data-olho])').forEach(inp => {
+    inp.dataset.olho = '1';
+    const cx = document.createElement('span'); cx.className = 'senha-cx';
+    inp.parentNode.insertBefore(cx, inp); cx.appendChild(inp);
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'senha-olho'; b.setAttribute('aria-label', 'Mostrar senha'); b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = I('olho');
+    cx.appendChild(b);
+  });
+}
+function esconderSenha(inp) {
+  inp.type = 'password';
+  const b = inp.parentNode.querySelector('.senha-olho'); if (!b) return;
+  b.classList.remove('on'); b.innerHTML = I('olho'); b.setAttribute('aria-label', 'Mostrar senha'); b.setAttribute('aria-pressed', 'false');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.senha-olho'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const inp = b.parentNode.querySelector('input');
+  if (inp.type === 'password') {
+    inp.type = 'text'; b.classList.add('on'); b.innerHTML = I('olhoX'); b.setAttribute('aria-label', 'Esconder senha'); b.setAttribute('aria-pressed', 'true');
+  } else esconderSenha(inp);
+  inp.focus({ preventScroll: true });
+  try { const n = inp.value.length; inp.setSelectionRange(n, n); } catch (x) {}
+}, true);
+// ao enviar, esconde de novo (fase de captura: antes de o formulário ser processado)
+document.addEventListener('submit', e => { e.target.querySelectorAll('input[data-olho]').forEach(esconderSenha); }, true);
+new MutationObserver(() => olhoSenha()).observe(document.getElementById('app'), { childList: true, subtree: true });
+document.addEventListener('vmb-pronto', () => olhoSenha());
+
+/* ═══ PDF DA FICHA (cópia antes de excluir) ═══ */
+let jspdfPronto = null;
+function carregarJsPDF() {
+  if (window.jspdf) return Promise.resolve();
+  if (!jspdfPronto) jspdfPronto = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'js/vendor/jspdf.umd.min.js';
+    s.onload = res; s.onerror = () => { jspdfPronto = null; rej(new Error('jspdf')); };
+    document.head.appendChild(s);
+  });
+  return jspdfPronto;
+}
+function logoParaPDF() {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => { try { const k = Math.min(1, 420 / img.width), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); res({ data: c.toDataURL('image/jpeg', 0.92), proporcao: img.height / img.width }); } catch (e) { res(null); } };
+    img.onerror = () => res(null);
+    img.src = 'img/logo-vmb.png';
+  });
+}
+async function baixarFichaPDF(id) {
+  try {
+    const [, logo, r] = await Promise.all([carregarJsPDF(), logoParaPDF(), sb.from('anamneses').select('paciente_id,servicos,resumo,assinatura,enviada_em').eq('id', id).single()]);
+    if (r.error) throw r.error;
+    const a = r.data, p = paciente(a.paciente_id) || {};
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, H = 297, M = 16, CW = W - 2 * M;
+    const COR = [107, 74, 53], FUNDO = [241, 226, 207], BORDA = [226, 216, 204], CINZA = [122, 101, 86], ESCURO = [59, 38, 22];
+    const limpar = t => String(t == null ? '' : t).replace(/[—–]/g, '-').replace(/[^\x00-\xFF]/g, '').trim();
+    const quando = d => { const x = new Date(d); return x.toLocaleDateString('pt-BR') + ' às ' + x.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+    let y = M;
+    const garantir = h => { if (y + h > H - M - 6) { doc.addPage(); y = M; } };
+    if (logo) { const w = 58, h = w * logo.proporcao; doc.addImage(logo.data, 'JPEG', W / 2 - w / 2, y, w, h); y += h + 8; }
+    doc.setFont('helvetica', 'normal').setFontSize(17).setTextColor(...ESCURO);
+    doc.text('Ficha de Anamnese', W / 2, y, { align: 'center' }); y += 6;
+    doc.setFontSize(9).setTextColor(...CINZA);
+    doc.text(limpar(`${p.nome || ''} - enviada em ${quando(a.enviada_em)}`), W / 2, y, { align: 'center' }); y += 9;
+    (a.resumo || []).forEach(sec => {
+      const linhas = sec.linhas || [];
+      if (sec.destaque) {
+        const tx = linhas.flatMap(([q, v]) => doc.splitTextToSize(limpar(v ? `${q}: ${v}` : q), CW - 10));
+        const h = 12 + tx.length * 4.6; garantir(h);
+        doc.setFillColor(...FUNDO).setDrawColor(...COR).setLineWidth(0.4).roundedRect(M, y, CW, h, 2, 2, 'FD');
+        doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...COR).text(limpar(sec.titulo || 'ATENCAO').toUpperCase(), M + 5, y + 6.5);
+        doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(...ESCURO).text(tx, M + 5, y + 12);
+        y += h + 7; return;
+      }
+      garantir(14);
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...COR).text(limpar(sec.titulo).toUpperCase(), M, y);
+      doc.setDrawColor(...BORDA).setLineWidth(0.3).line(M, y + 1.8, W - M, y + 1.8); y += 6.5;
+      doc.setFontSize(9);
+      linhas.forEach(([q, v]) => {
+        const ql = doc.splitTextToSize(limpar(q), 66), vl = doc.splitTextToSize(limpar(v), CW - 70);
+        const h = Math.max(ql.length, vl.length) * 4 + 1.6; garantir(h);
+        doc.setFont('helvetica', 'normal').setTextColor(...CINZA).text(ql, M, y);
+        doc.setFont('helvetica', 'bold').setTextColor(...ESCURO).text(vl, M + 70, y);
+        y += h;
+      });
+      y += 4;
+    });
+    garantir(24); y += 8;
+    doc.setDrawColor(...ESCURO).setLineWidth(0.3).line(M, y, M + 90, y);
+    doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...ESCURO).text(limpar(a.assinatura || p.nome || ''), M, y - 2);
+    doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...CINZA).text(limpar(`Assinatura digital (nome digitado) - ${quando(a.enviada_em)}`), M, y + 4);
+    const total = doc.getNumberOfPages();
+    for (let i = 1; i <= total; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...CINZA); doc.text(`Viva Mais Bella - Ficha de Anamnese - página ${i} de ${total}`, W / 2, H - 8, { align: 'center' }); }
+    const nome = limpar(p.nome || 'cliente').replace(/[^\p{L}\p{N} ]/gu, '').trim() || 'cliente';
+    const arq = `Anamnese - ${nome} - ${new Date(a.enviada_em).toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`;
+    const url = URL.createObjectURL(doc.output('blob'));
+    const l = document.createElement('a'); l.href = url; l.download = arq; document.body.appendChild(l); l.click(); l.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    toast('PDF da ficha baixado.');
+  } catch (e) { console.error(e); toast('Não foi possível gerar o PDF. Tente de novo.'); }
 }
 
 /* ═══ INÍCIO ═══ */

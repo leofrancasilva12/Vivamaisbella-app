@@ -1,5 +1,5 @@
 // Sempre busca a versão mais nova; usa a cópia guardada só se estiver sem internet
-const CACHE = 'vmb-app-v4';
+const CACHE = 'vmb-app-v5';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
