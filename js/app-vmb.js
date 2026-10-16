@@ -71,7 +71,9 @@ const aniversarioDe = p => {
 };
 const ANIV_DIAS = 3;
 const quandoAniv = x => x.dias === 0 ? 'Hoje' : x.dias === 1 ? 'Amanhã' : x.data.toLocaleDateString('pt-BR', { weekday: 'long' }).replace(/^./, c => c.toUpperCase()) + ', ' + fCurta(x.data.toISOString());
-const msgParabens = p => `Feliz aniversário, ${primeiro(p.nome)}! Que seu novo ano seja de muita saúde, beleza e bem-estar. Um abraço carinhoso, ${TERAPEUTA}, Viva Mais Bella.`;
+const linkParabens = p => `${location.origin}/parabens.html?n=${encodeURIComponent(primeiro(p.nome))}`;
+const msgParabens = p => `*Feliz aniversário, ${primeiro(p.nome)}!* 🎂\n\nQue seu novo ano seja de muita saúde, beleza e bem-estar.\n\nUm abraço carinhoso,\n${TERAPEUTA} · Viva Mais Bella\n\n${linkParabens(p)}`;
+const parabensEnviado = (p, x) => (st.parabens || []).some(z => z.paciente_id === p.id && z.ano === x.data.getFullYear());
 const lerNasc = t => { const m = String(t || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) return null; const d = new Date(+m[3], +m[2] - 1, +m[1]); if (d.getDate() !== +m[1] || d.getMonth() !== +m[2] - 1 || d > new Date() || +m[3] < 1900) return null; return `${m[3]}-${m[2]}-${m[1]}`; };
 const mascaraNasc = el => { const d = el.value.replace(/\D/g, '').slice(0, 8); el.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d; };
 const moeda = n => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -253,7 +255,7 @@ function fecharSheet() { $('#sheet').innerHTML = ''; }
 
 /* ═══ DADOS ═══ */
 async function carregar() {
-  const [p, pl, f, pr, pd, de, fe] = await Promise.all([
+  const [p, pl, f, pr, pd, de, fe, pb] = await Promise.all([
     sb.from('pacientes').select('id,nome,telefone,idade,data_nascimento,endereco,foto,criado_em').order('nome'),
     sb.from('planos').select('id,paciente_id,procedimento,total_sessoes,valor,status,codigo_publico,criado_em,sessoes(id,numero,data_hora,status,observacao,concluida_em)').order('criado_em', { ascending: false }),
     sb.from('anamneses').select('id,paciente_id,servicos,pontos_atencao,enviada_em,pacote').order('enviada_em', { ascending: false }),
@@ -261,6 +263,7 @@ async function carregar() {
     sb.from('pedidos_horario').select('id,plano_id,paciente_id,procedimento,data_hora,criado_em,anamnese_id').eq('status', 'pendente').order('data_hora'),
     sb.from('dias_especiais').select('dia,horas').gte('dia', diaKey(new Date())),
     sb.from('feriados').select('dia,nome').gte('dia', diaKey(new Date())).order('dia'),
+    sb.from('parabens_enviados').select('paciente_id,ano').gte('ano', new Date().getFullYear() - 1),
   ]);
   for (const r of [p, pl, f]) if (r.error) throw r.error;
   st.pacientes = p.data; st.planos = pl.data; st.fichas = f.data;
@@ -269,6 +272,7 @@ async function carregar() {
   st.pedidos = pd.error ? [] : pd.data.filter(x => x.plano_id ? st.planos.some(pl => pl.id === x.plano_id && pl.status === 'ativo') : st.pacientes.some(p => p.id === x.paciente_id));
   st.especiais = de.error ? [] : de.data.map(x => ({ dia: x.dia, horas: (x.horas || []).map(h => h.slice(0, 5)) }));
   st.feriados = fe.error ? [] : fe.data;
+  st.parabens = pb.error ? [] : pb.data;
   st.carregadoEm = Date.now();
   await carregarFotos();
 }
@@ -387,7 +391,8 @@ function cartaoAniversarios(lista, semNasc) {
         <div style="flex:1;min-width:0"><b style="font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</b>
           <div class="ink2" style="font-size:13px"><span class="aniv-quando">${esc(quandoAniv(x))}</span> · faz ${x.idade} anos</div></div>
         ${x.dias ? `<span class="aniv-dias"><b>${x.dias}</b>${x.dias === 1 ? 'dia' : 'dias'}</span>` : ''}</a>
-      <a class="btn sm${x.dias ? ' ghost' : ''}" href="${waLink(p.telefone, msgParabens(p))}" target="_blank" rel="noopener" style="width:100%">${I('wa')} ${x.dias ? 'Preparar parabéns' : 'Mandar parabéns'}</a>
+      ${x.dias ? `<div class="aniv-espera">${I('clock', 1.8)} O botão de parabéns aparece no dia do aniversário.</div>`
+        : `<a class="btn sm" href="${waLink(p.telefone, msgParabens(p))}" target="_blank" rel="noopener" style="width:100%" data-acao="parabens" data-id="${p.id}" data-ano="${x.data.getFullYear()}">${I('wa')} Mandar parabéns</a>`}
     </div>`).join('')}
     ${semNasc ? `<button class="aniv-falta" data-acao="sem-nasc">${I('alert', 1.8)} ${semNasc} ${semNasc === 1 ? 'paciente está' : 'pacientes estão'} sem data de nascimento</button>` : ''}
   </section>`;
@@ -404,7 +409,7 @@ function vInicio() {
   const semana = todas.filter(x => x.s.data_hora && x.s.status === 'agendada' && new Date(x.s.data_hora) >= agora && new Date(x.s.data_hora) <= fimSemana).length;
   const renovar = st.planos.filter(p => p.status === 'ativo' && info(p).falta <= 1);
   const semPlano = st.pacientes.filter(p => !planosDe(p.id).length && fichaDe(p.id));
-  const aniv = st.pacientes.map(p => ({ p, x: aniversarioDe(p) })).filter(o => o.x && o.x.dias <= ANIV_DIAS).sort((a, b) => a.x.dias - b.x.dias || a.p.nome.localeCompare(b.p.nome));
+  const aniv = st.pacientes.map(p => ({ p, x: aniversarioDe(p) })).filter(o => o.x && o.x.dias <= ANIV_DIAS && !parabensEnviado(o.p, o.x)).sort((a, b) => a.x.dias - b.x.dias || a.p.nome.localeCompare(b.p.nome));
   const semNasc = st.pacientes.filter(p => !p.data_nascimento).length;
   const h = agora.getHours(), saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   const dataTxt = agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -478,7 +483,7 @@ function vPaciente(id) {
     <div class="row"><button class="av-btn" data-acao="foto" data-tipo="paciente" data-id="${p.id}" aria-label="Foto da paciente">${av(p.nome, p.foto, 'g')}<span class="cam">${I('cam')}</span></button><div style="min-width:0"><h1 class="t" style="font-size:28px">${esc(p.nome)}</h1>
       <div class="ink2" style="font-size:14px">${esc(fTel(p.telefone))}${idadeDe(p) ? ' · ' + idadeDe(p) + ' anos' : ''}${p.data_nascimento ? ' · nasc. ' + nascBR(p.data_nascimento) : ''}</div>
       ${p.endereco ? `<div class="muted" style="font-size:13px">${esc(p.endereco)}</div>` : ''}
-      ${(x => x && x.dias <= ANIV_DIAS ? `<span class="selo-aniv">${I('bolo', 1.8)} ${x.dias === 0 ? 'Aniversário hoje' : x.dias === 1 ? 'Aniversário amanhã' : 'Aniversário em ' + x.dias + ' dias'} · ${x.idade} anos</span>` : '')(aniversarioDe(p))}</div></div>
+      ${(x => x && x.dias <= ANIV_DIAS ? `<span class="selo-aniv">${I('bolo', 1.8)} ${x.dias === 0 ? (parabensEnviado(p, x) ? 'Aniversário hoje · parabéns enviados' : 'Aniversário hoje') : x.dias === 1 ? 'Aniversário amanhã' : 'Aniversário em ' + x.dias + ' dias'} · ${x.idade} anos</span>` : '')(aniversarioDe(p))}</div></div>
     <a class="btn soft" href="${waLink(p.telefone)}" target="_blank" rel="noopener">${I('wa')} Conversar no WhatsApp</a>
     <section class="card stack"><div class="tag">Ficha de anamnese</div>
       ${f ? `<div class="ink2" style="font-size:14px">${esc((f.servicos || []).join(', '))} · ${fData(f.enviada_em)}</div>
@@ -1109,6 +1114,17 @@ document.addEventListener('click', async e => {
     return;
   }
   if (a === 'sem-nasc') { sheetSemNasc(); return; }
+  if (a === 'parabens') {
+    // o WhatsApp abre pelo próprio link; aqui só registra o envio para o cartão sumir (nos dois celulares)
+    const ano = Number(el.dataset.ano), card = el.closest('.aniv-card');
+    st.parabens = (st.parabens || []).concat({ paciente_id: id, ano });
+    if (card) { card.style.transition = 'opacity .35s, transform .35s'; card.style.opacity = '0'; card.style.transform = 'scale(.97)'; }
+    setTimeout(() => render(), 380);
+    const r = await sb.from('parabens_enviados').upsert({ paciente_id: id, ano }, { onConflict: 'paciente_id,ano', ignoreDuplicates: true });
+    if (r.error) { st.parabens = st.parabens.filter(z => !(z.paciente_id === id && z.ano === ano)); render(); return toast('Não foi possível marcar como enviado. Tente de novo.'); }
+    toast('Parabéns enviados.');
+    return;
+  }
   if (a === 'excluir-ficha') {
     const f = st.fichas.find(x => x.id === id); if (!f) return;
     const p = paciente(f.paciente_id), serv = (f.servicos || []).join(', ');
@@ -1401,6 +1417,8 @@ async function enviarForm(tipo, form) {
 .aniv-falta svg.i{width:18px;height:18px;color:var(--accent);flex-shrink:0}
 .selo-aniv{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;font-weight:600;border-radius:10px;padding:4px 9px;background:#F3DDD3;color:#9A3F1E}
 .selo-aniv svg.i{width:14px;height:14px}
+.aniv-espera{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:var(--bg);border-radius:12px;padding:10px 12px}
+.aniv-espera svg.i{width:17px;height:17px;flex-shrink:0;color:var(--accent)}
 .pacote-esc{display:flex;gap:10px;align-items:flex-start;background:#F6EDE3;border:1px solid #EAD9C6;border-radius:14px;padding:10px 12px;font-size:14px;color:var(--ink)}
 .pacote-esc svg.i{width:18px;height:18px;color:var(--accent);flex-shrink:0;margin-top:2px}
 .pacote-esc div{display:flex;flex-direction:column;gap:2px;min-width:0}
